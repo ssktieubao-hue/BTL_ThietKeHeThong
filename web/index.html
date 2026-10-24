@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Garden PRO | BTL He Thong Tuoi Tu Dong ESP32</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo">
+        <span class="icon">🌱</span>
+        <div>
+          <h1>HỆ THỐNG GIÁM SÁT & TƯỚI TỰ ĐỘNG PRO</h1>
+          <div class="subtitle">Đề tài Bài tập lớn - IoT ESP32 & Năng lượng</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="clock-box" id="clockBox">🕒 --:--:--</div>
+        <div class="connection-status">
+          <span class="dot" id="statusDot"></span>
+          <span id="statusText">Đang tìm ESP32...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Banner Cảnh Báo An Toàn Khẩn Cấp -->
+    <div id="safetyAlertBanner" class="alert-banner" style="display: none;">
+      ⚠️ <span id="safetyAlertMsg">CẢNH BÁO AN TOÀN!</span>
+    </div>
+
+    <!-- Thanh cấu hình IP & Chế độ hoạt động -->
+    <div class="ip-bar">
+      <div class="ip-group">
+        <label for="espIp">IP ESP32:</label>
+        <input type="text" id="espIp" value="smartgarden.local" placeholder="IP hoặc smartgarden.local">
+        <button class="btn-connect" onclick="reconnect()">Kết Nối Lại</button>
+      </div>
+
+      <div class="mode-group">
+        <span>Chế độ:</span>
+        <button id="modeBtn" class="btn-mode mode-auto" onclick="toggleMode()">TỰ ĐỘNG [AUTO]</button>
+      </div>
+
+      <button class="btn-demo" id="demoBtn" onclick="toggleDemo()">Chế độ Demo: TẮT</button>
+    </div>
+
+    <!-- Hàng thẻ thông số cảm biến -->
+    <div class="grid-cards">
+      <!-- Thẻ 1: Nhiệt độ -->
+      <div class="card card-temp">
+        <div class="card-icon">🌡️</div>
+        <div class="card-title">Nhiệt Độ (DHT11)</div>
+        <div class="card-value" id="valTemp">-- &deg;C</div>
+        <div class="card-sub" id="tempStatus">Khí hậu ổn định</div>
+      </div>
+
+      <!-- Thẻ 2: Độ ẩm không khí -->
+      <div class="card card-hum">
+        <div class="card-icon">💧</div>
+        <div class="card-title">Độ Ẩm Không Khí (DHT11)</div>
+        <div class="card-value" id="valHum">-- %</div>
+        <div class="card-sub">Độ ẩm môi trường xung quanh</div>
+      </div>
+
+      <!-- Thẻ 3: Độ ẩm đất -->
+      <div class="card card-soil">
+        <div class="card-icon">🪴</div>
+        <div class="card-title">Độ Ẩm Đất (GPIO 34)</div>
+        <div class="card-value" id="valSoil">-- %</div>
+        <div class="card-sub" id="valRaw">Tín hiệu ADC thô: --</div>
+      </div>
+
+      <!-- Thẻ 4: Bình chứa nước (Đo mức nước Analog GPIO 35) -->
+      <div class="card card-water">
+        <div class="card-icon">🚰</div>
+        <div class="card-title">Mực Nước Bình Chứa (D35)</div>
+        <div class="card-value" id="valWater">-- %</div>
+        <div class="water-bar-bg">
+          <div class="water-bar-fill" id="waterBarFill" style="width: 0%;"></div>
+        </div>
+        <div class="card-sub" id="waterSub">Trạng thái: Đang giám sát...</div>
+      </div>
+    </div>
+
+    <!-- Hàng điều khiển & Cài đặt thông số Flash -->
+    <div class="control-section">
+      <!-- Cột 1: Điều khiển máy bơm -->
+      <div class="card pump-card">
+        <h3>Điều Khiển Máy Bơm Nước (Relay GPIO 23)</h3>
+        <p class="pump-status-text">
+          Trạng thái: <strong id="pumpStatusLabel">ĐANG TẮT</strong>
+        </p>
+        <div class="pump-timer-box" id="pumpTimerBox">
+          Thời gian bơm liên tục: <strong id="pumpDuration">0</strong> / 60 giây (Tự ngắt an toàn)
+        </div>
+        <button id="mainPumpBtn" class="btn-pump btn-pump-off" onclick="togglePump()">
+          BẬT MÁY BƠM
+        </button>
+      </div>
+
+      <!-- Cột 2: Cài đặt ngưỡng độ ẩm (Lưu vào Flash ESP32) -->
+      <div class="card settings-card">
+        <h3>Cài Đặt Ngưỡng Tưới Thông Minh (Lưu Flash)</h3>
+        
+        <div class="slider-group">
+          <label>
+            Ngưỡng đất khô (Tự bật bơm): <strong id="lblDry">40%</strong>
+          </label>
+          <input type="range" id="sliderDry" min="10" max="60" value="40" oninput="onSliderChange()">
+        </div>
+
+        <div class="slider-group">
+          <label>
+            Ngưỡng đủ ẩm (Tự dừng bơm): <strong id="lblWet">65%</strong>
+          </label>
+          <input type="range" id="sliderWet" min="50" max="95" value="65" oninput="onSliderChange()">
+        </div>
+
+        <button class="btn-save-settings" onclick="saveThresholds()">💾 Lưu Cài Đặt Vào ESP32</button>
+      </div>
+    </div>
+
+    <!-- Biểu đồ thời gian thực -->
+    <div class="card chart-card">
+      <div class="chart-header">
+        <h3>Biểu Đồ Theo Dõi Độ Ẩm Đất & Nhiệt Độ Thời Gian Thực</h3>
+        <button class="btn-export" onclick="exportCSV()">📥 Xuất Dữ Liệu Báo Cáo (CSV / Excel)</button>
+      </div>
+      <canvas id="realtimeChart"></canvas>
+    </div>
+
+    <!-- Bảng nhật ký tưới cây -->
+    <div class="card log-card">
+      <h3>Nhật Ký Hoạt Động Hệ Thống</h3>
+      <div class="table-responsive">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Thời Gian</th>
+              <th>Sự Kiện</th>
+              <th>Độ Ẩm Đất</th>
+              <th>Nhiệt Độ</th>
+              <th>Ghi Chú</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody">
+            <tr>
+              <td>--:--:--</td>
+              <td>Khởi động hệ thống</td>
+              <td>--%</td>
+              <td>--&deg;C</td>
+              <td>Hệ thống sẵn sàng giám sát</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
